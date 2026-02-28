@@ -2,8 +2,9 @@ from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from rest_framework import status
 from django.http import HttpResponse
+from django.views.decorators.csrf import csrf_exempt
 import csv
-import io
+import json
 
 from .serializers import TitrationInputSerializer
 from .calculation import find_equivalence
@@ -34,14 +35,22 @@ def calculate(request):
     return Response(result, status=status.HTTP_200_OK)
 
 
-@api_view(["POST"])
+@csrf_exempt
 def download_input(request):
-    """POST /api/download-input/ — download input data as CSV."""
-    volumes = request.data.get("volumes", [])
-    conductivities = request.data.get("conductivities", [])
+    """POST /api/download-input/ — download input data as CSV.
+    Accepts form-encoded POST with a 'json_data' field containing JSON.
+    """
+    if request.method != "POST":
+        return HttpResponse("Method not allowed", status=405)
+
+    raw = request.POST.get("json_data", "{}")
+    data = json.loads(raw)
+    volumes = data.get("volumes", [])
+    conductivities = data.get("conductivities", [])
 
     response = HttpResponse(content_type="text/csv")
     response["Content-Disposition"] = 'attachment; filename="titration_input_data.csv"'
+    response["Access-Control-Allow-Origin"] = "*"
 
     writer = csv.writer(response)
     writer.writerow(["Volume", "Conductivity"])
@@ -51,13 +60,20 @@ def download_input(request):
     return response
 
 
-@api_view(["POST"])
+@csrf_exempt
 def download_results(request):
-    """POST /api/download-results/ — download analysis results as CSV."""
-    data = request.data
+    """POST /api/download-results/ — download analysis results as CSV.
+    Accepts form-encoded POST with a 'json_data' field containing JSON.
+    """
+    if request.method != "POST":
+        return HttpResponse("Method not allowed", status=405)
+
+    raw = request.POST.get("json_data", "{}")
+    data = json.loads(raw)
 
     response = HttpResponse(content_type="text/csv")
     response["Content-Disposition"] = 'attachment; filename="titration_results.csv"'
+    response["Access-Control-Allow-Origin"] = "*"
 
     writer = csv.writer(response)
     writer.writerow(["Conductometric Titration Analysis - Results Report"])
