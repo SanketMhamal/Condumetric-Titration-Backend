@@ -1,0 +1,167 @@
+"""
+Core calculation module — Fortran-to-Python port of conductometric titration analysis.
+
+Implements:
+- Dilution correction
+- Strong acid splitting (min conductivity)
+- Weak acid splitting (max diff-delta)
+- Linear regression (MLSF)
+- Equivalence point & angle calculation
+"""
+
+import math
+import numpy as np
+from scipy.stats import linregress
+
+
+def apply_dilution(volumes, conductivities, v0):
+    """
+    Correct measured conductivities for dilution effect.
+    Y_corrected = Y_measured * (V0 + v) / V0
+    """
+    volumes = np.asarray(volumes, dtype=np.float64)
+    conductivities = np.asarray(conductivities, dtype=np.float64)
+    return conductivities * (v0 + volumes) / v0
+
+
+def split_strong(conductivities):
+    """
+    Strong acid: split at the index of minimum conductivity.
+    Returns the index of the minimum value (0-based).
+    """
+    return int(np.argmin(conductivities))
+
+
+def split_weak(conductivities):
+    """
+    Weak acid: split at the index where diff(delta) is maximised.
+
+    delta_i    = |Y_i - Y_{i-1}|          (for i >= 1)
+    diff_delta = |delta_i - delta_{i-1}|  (for i >= 2, i.e. from original index 3+)
+
+    The split index (into the original array) is returned.
+    Region A = [:split], Region B = [split:]
+    """
+    y = np.asarray(conductivities, dtype=np.float64)
+    delta = np.abs(np.diff(y))                   # length n-1
+    diff_delta = np.abs(np.diff(delta))           # length n-2
+
+    # diff_delta[0] corresponds to original index 2, but Fortran starts
+    # the search from index 4 (1-based), which is index 3 (0-based).
+    # diff_delta index = original_index - 2
+    # So search from diff_delta index 1 onward (original index 3).
+    search_region = diff_delta[1:]                # skip first element
+    max_idx_in_search = int(np.argmax(search_region))
+    # Map back: diff_delta index = max_idx_in_search + 1,
+    #           original index  = diff_delta_index + 2
+    original_index = max_idx_in_search + 1 + 2    # = max_idx_in_search + 3
+    return original_index
+
+
+def _regression(x, y):
+    """
+    Perform least-squares linear regression.
+    Returns dict with slope, intercept, r_squared, std_dev.
+    """
+    x = np.asarray(x, dtype=np.float64)
+    y = np.asarray(y, dtype=np.float64)
+
+    result = linregress(x, y)
+    slope = result.slope
+    intercept = result.intercept
+    r_value = result.rvalue
+    r_squared = r_value ** 2
+
+    # Standard deviation of residuals (matching Fortran: sqrt(sum(err^2) / n))
+    predicted = slope * x + intercept
+    residuals = y - predicted
+    std_dev = float(np.sqrt(np.mean(residuals ** 2)))
+
+    return {
+        "slope": slope,
+        "intercept": intercept,
+        "r_squared": r_squared,
+        "std_dev": std_dev,
+    }
+
+
+def find_equivalence(volumes, conductivities, acid_type, v0, apply_dilution_flag):
+    """
+    Full pipeline: correct → split → regress → intersect → angle.
+
+    Parameters
+    ----------
+    volumes : list[float]
+    conductivities : list[float]
+    acid_type : str  ("strong" or "weak")
+    v0 : float  (initial volume of acid solution)
+    apply_dilution_flag : bool
+
+    Returns
+    -------
+    dict  matching the API response specification
+    """
+    vols = np.asarray(volumes, dtype=np.float64)
+    conds = np.asarray(conductivities, dtype=np.float64)
+
+    # 1. Dilution correction
+    if apply_dilution_flag:
+        corrected = apply_dilution(vols, conds, v0)
+    else:
+        corrected = conds.copy()
+
+    corrected_data = list(zip(vols.tolist(), corrected.tolist()))
+
+    # 2. Split into two regions
+    if acid_type == "strong":
+        split_idx = split_strong(corrected)
+        # Region A: indices 0 .. split_idx  (inclusive)
+        # Region B: indices split_idx+1 .. end
+        x_a = vols[: split_idx + 1]
+        y_a = corrected[: split_idx + 1]
+        x_b = vols[split_idx + 1:]
+        y_b = corrected[split_idx + 1:]
+    else:
+        split_idx = split_weak(corrected)
+        # Region A: indices 0 .. split_idx-1
+        # Region B: indices split_idx .. end
+        x_a = vols[:split_idx]
+        y_a = corrected[:split_idx]
+        x_b = vols[split_idx:]
+        y_b = corrected[split_idx:]
+
+    # 3. Linear regression on each region
+    reg_a = _regression(x_a, y_a)
+    reg_b = _regression(x_b, y_b)
+
+    m1, c1 = reg_a["slope"], reg_a["intercept"]
+    m2, c2 = reg_b["slope"], reg_b["intercept"]
+
+    # 4. Intersection (equivalence point)
+    x0 = (c1 - c2) / (m2 - m1)
+    y0 = m1 * x0 + c1
+
+    # 5. Angle between lines
+    term = abs((m1 - m2) / (1.0 + m1 * m2))
+    alpha_deg = math.degrees(math.atan(term))
+    if acid_type == "weak":
+        alpha_deg = 180.0 - alpha_deg
+
+    return {
+        "equivalence_point": {
+            "volume": round(x0, 5),
+            "conductivity": round(y0, 5),
+        },
+        "angle": round(alpha_deg, 2),
+        "region_A": {
+            "slope": round(m1, 5),
+            "intercept": round(c1, 5),
+            "r_squared": round(reg_a["r_squared"], 5),
+        },
+        "region_B": {
+            "slope": round(m2, 5),
+            "intercept": round(c2, 5),
+            "r_squared": round(reg_b["r_squared"], 5),
+        },
+        "corrected_data": corrected_data,
+    }
