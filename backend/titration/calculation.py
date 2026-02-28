@@ -112,19 +112,24 @@ def find_equivalence(volumes, conductivities, acid_type, v0, apply_dilution_flag
 
     corrected_data = list(zip(vols.tolist(), corrected.tolist()))
 
-    # 2. Split into two regions
+    # 2. Split into two regions (ensure each has >= 2 points for regression)
+    n = len(vols)
     if acid_type == "strong":
         split_idx = split_strong(corrected)
-        # Region A: indices 0 .. split_idx  (inclusive)
-        # Region B: indices split_idx+1 .. end
+        # Region A = [:split_idx+1]  (split_idx+1 items)
+        # Region B = [split_idx+1:]  (n - split_idx - 1 items)
+        # Both need >= 2  =>  split_idx >= 1 and split_idx <= n-3
+        split_idx = max(1, min(split_idx, n - 3))
         x_a = vols[: split_idx + 1]
         y_a = corrected[: split_idx + 1]
         x_b = vols[split_idx + 1:]
         y_b = corrected[split_idx + 1:]
     else:
         split_idx = split_weak(corrected)
-        # Region A: indices 0 .. split_idx-1
-        # Region B: indices split_idx .. end
+        # Region A = [:split_idx]  (split_idx items)
+        # Region B = [split_idx:]  (n - split_idx items)
+        # Both need >= 2  =>  split_idx >= 2 and split_idx <= n-2
+        split_idx = max(2, min(split_idx, n - 2))
         x_a = vols[:split_idx]
         y_a = corrected[:split_idx]
         x_b = vols[split_idx:]
@@ -147,21 +152,25 @@ def find_equivalence(volumes, conductivities, acid_type, v0, apply_dilution_flag
     if acid_type == "weak":
         alpha_deg = 180.0 - alpha_deg
 
+    # Helper to convert numpy types to native Python floats
+    def _f(v):
+        return float(v)
+
     return {
         "equivalence_point": {
-            "volume": round(x0, 5),
-            "conductivity": round(y0, 5),
+            "volume": _f(round(x0, 5)),
+            "conductivity": _f(round(y0, 5)),
         },
-        "angle": round(alpha_deg, 2),
+        "angle": _f(round(alpha_deg, 2)),
         "region_A": {
-            "slope": round(m1, 5),
-            "intercept": round(c1, 5),
-            "r_squared": round(reg_a["r_squared"], 5),
+            "slope": _f(round(m1, 5)),
+            "intercept": _f(round(c1, 5)),
+            "r_squared": _f(round(reg_a["r_squared"], 5)),
         },
         "region_B": {
-            "slope": round(m2, 5),
-            "intercept": round(c2, 5),
-            "r_squared": round(reg_b["r_squared"], 5),
+            "slope": _f(round(m2, 5)),
+            "intercept": _f(round(c2, 5)),
+            "r_squared": _f(round(reg_b["r_squared"], 5)),
         },
-        "corrected_data": corrected_data,
+        "corrected_data": [[_f(v), _f(c)] for v, c in corrected_data],
     }
