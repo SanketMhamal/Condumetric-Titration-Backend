@@ -199,7 +199,7 @@ The `calculation.py` module implements the following pipeline:
 
 4. **Equivalence Point**: Calculates the intersection of the two regression lines. The x-coordinate gives the equivalence volume, and the y-coordinate gives the conductivity at the equivalence point.
 
-5. **Angle Calculation**: Computes the angle between the two regression lines using `arctan(|(m1 - m2) / (1 + m1 * m2)|)`. For weak acids, the angle is supplemented to 180 degrees.
+5. **Angle Calculation**: Computes the angle between the two regression lines using the **dot product method**. Three points are used: the intersection point A, a point B on Region A (at `x = x0 - 1`), and a point C on Region B (at `x = x0 + 1`). The angle is calculated as `arccos(dot(AB, AC) / (|AB| × |AC|))`. An acute angle indicates a strong acid, while an obtuse angle indicates a weak acid.
 
 ### Key Functions
 
@@ -209,7 +209,7 @@ The `calculation.py` module implements the following pipeline:
 | `split_strong()`     | calculation.py    | Finds split index for strong acid (min conductivity) |
 | `split_weak()`       | calculation.py    | Finds split index for weak acid (max diff-delta)  |
 | `_regression()`      | calculation.py    | Least-squares linear regression                   |
-| `find_equivalence()` | calculation.py    | Full analysis pipeline (correct, split, regress, intersect, angle) |
+| `find_equivalence()` | calculation.py    | Full analysis pipeline (correct, split, regress, intersect, dot product angle) |
 | `calculate()`        | views.py          | API endpoint for titration analysis               |
 | `download_input()`   | views.py          | CSV download for input data                       |
 | `download_results()` | views.py          | CSV download for analysis results                 |
