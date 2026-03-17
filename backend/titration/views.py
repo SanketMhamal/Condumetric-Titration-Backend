@@ -10,6 +10,12 @@ from .serializers import TitrationInputSerializer
 from .calculation import find_equivalence
 
 
+@api_view(["GET"])
+def health(request):
+    """GET /api/health/ — lightweight ping to wake up the Render server."""
+    return Response({"status": "ok"})
+
+
 @api_view(["POST"])
 def calculate(request):
     """POST /api/calculate/ — run conductometric titration analysis."""
