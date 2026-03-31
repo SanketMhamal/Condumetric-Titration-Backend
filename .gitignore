@@ -11,7 +11,7 @@ db.sqlite3
 *.log
 venv/
 .env
-
+env/
 # Django
 backend/static_collected/
 media/
