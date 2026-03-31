@@ -146,25 +146,18 @@ def find_equivalence(volumes, conductivities, acid_type, v0, apply_dilution_flag
     x0 = (c1 - c2) / (m2 - m1)
     y0 = m1 * x0 + c1
 
-    # 5. Angle between lines (dot product method)
-    # Point A = intersection (equivalence point)
-    # Point B = arbitrary point on Region A line (x = x0 - 1)
-    # Point C = arbitrary point on Region B line (x = x0 + 1)
-    xB = x0 - 1.0
-    yB = m1 * xB + c1
-    xC = x0 + 1.0
-    yC = m2 * xC + c2
-
-    # Vectors from A to B and A to C
-    vec_AB = np.array([xB - x0, yB - y0])
-    vec_AC = np.array([xC - x0, yC - y0])
-
-    dot_product = np.dot(vec_AB, vec_AC)
-    mag_AB = np.linalg.norm(vec_AB)
-    mag_AC = np.linalg.norm(vec_AC)
-
-    cos_alpha = np.clip(dot_product / (mag_AB * mag_AC), -1.0, 1.0)
-    alpha_deg = math.degrees(math.acos(cos_alpha))
+    # 5. Angle between lines (arctan formula)
+    # Standard formula: tan(θ) = |m1 - m2| / (1 + m1·m2)
+    # When (1 + m1·m2) < 0 the angle is obtuse: θ = 180° - atan(...)
+    denom = 1.0 + m1 * m2
+    if abs(denom) < 1e-12:
+        # Lines are perpendicular
+        alpha_deg = 90.0
+    else:
+        tan_theta = abs((m1 - m2) / denom)
+        alpha_deg = math.degrees(math.atan(tan_theta))
+        if denom < 0:
+            alpha_deg = 180.0 - alpha_deg
 
     # Helper to convert numpy types to native Python floats
     def _f(v):
